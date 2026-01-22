@@ -19,7 +19,6 @@ import (
 const (
 	cacheSize = 10000 // Number of cached vehicle sessions
 	defaultPort = 8080
-	defaultPortHTTPS = 8443
 )
 
 const (
@@ -29,7 +28,7 @@ const (
 	EnvPort    = "TESLA_HTTP_PROXY_PORT"
 	EnvTimeout = "TESLA_HTTP_PROXY_TIMEOUT"
 	EnvVerbose = "TESLA_VERBOSE"
-	EnvDisableTLS = "TESLA_HTTP_PROXY_DISABLE_TLS"
+	EnvDisableTls = "TESLA_HTTP_PROXY_DISABLE_TLS"
 )
 
 const nonLocalhostWarning = `
@@ -121,9 +120,9 @@ func main() {
 		return
 	}
 
-	// Check if TLS is disabled early
+	// Check if TLS is disabled
 	var useTLS bool = true
-	if disableTLS, ok := os.LookupEnv(EnvDisableTLS); ok {
+	if disableTLS, ok := os.LookupEnv(EnvDisableTls); ok {
 		useTLS = disableTLS != "true"
 	}
 
