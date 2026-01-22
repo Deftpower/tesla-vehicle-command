@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	cacheSize   = 10000 // Number of cached vehicle sessions
-	defaultPort = 443
+	cacheSize = 10000 // Number of cached vehicle sessions
+	defaultPort = 8080
 )
 
 const (
@@ -28,6 +28,7 @@ const (
 	EnvPort    = "TESLA_HTTP_PROXY_PORT"
 	EnvTimeout = "TESLA_HTTP_PROXY_TIMEOUT"
 	EnvVerbose = "TESLA_VERBOSE"
+	EnvDisableTls = "TESLA_HTTP_PROXY_DISABLE_TLS"
 )
 
 const nonLocalhostWarning = `
@@ -119,17 +120,26 @@ func main() {
 		return
 	}
 
-	if tlsPublicKey, err := protocol.LoadPublicKey(httpConfig.keyFilename); err == nil {
-		if bytes.Equal(tlsPublicKey.Bytes(), skey.PublicBytes()) {
-			fmt.Fprintln(os.Stderr, "It is unsafe to use the same private key for TLS and command authentication.")
-			fmt.Fprintln(os.Stderr, "")
-			fmt.Fprintln(os.Stderr, "Generate a new TLS key for this server.")
-			return
+	// Check if TLS is disabled
+	var useTLS bool = true
+	if disableTLS, ok := os.LookupEnv(EnvDisableTls); ok {
+		useTLS = disableTLS != "true"
+	}
+
+	// Only validate TLS key if TLS is enabled
+	if useTLS {
+		if tlsPublicKey, err := protocol.LoadPublicKey(httpConfig.keyFilename); err == nil {
+			if bytes.Equal(tlsPublicKey.Bytes(), skey.PublicBytes()) {
+				fmt.Fprintln(os.Stderr, "It is unsafe to use the same private key for TLS and command authentication.")
+				fmt.Fprintln(os.Stderr, "")
+				fmt.Fprintln(os.Stderr, "Generate a new TLS key for this server.")
+				return
+			}
+			log.Debug("Verified that TLS key is not the same as the command-authentication key.")
+		} else {
+			// Discarding the error here is deliberate
+			log.Debug("Verified that TLS key is not a recycled command-authentication key, because it is not NIST P256.")
 		}
-		log.Debug("Verified that TLS key is not the same as the command-authentication key.")
-	} else {
-		// Discarding the error here is deliberate
-		log.Debug("Verified that TLS key is not a recycled command-authentication key, because it is not NIST P256.")
 	}
 
 	log.Debug("Creating proxy")
@@ -142,12 +152,11 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", httpConfig.host, httpConfig.port)
 	log.Info("Listening on %s", addr)
 
-	// To add more application logic requests, such as alternative client authentication, create
-	// a http.HandleFunc implementation (https://pkg.go.dev/net/http#HandlerFunc). The ServeHTTP
-	// method of your implementation can perform your business logic and then, if the request is
-	// authorized, invoke p.ServeHTTP. Finally, replace p in the below ListenAndServeTLS call with
-	// an object of your newly created type.
-	log.Error("Server stopped: %s", http.ListenAndServeTLS(addr, httpConfig.certFilename, httpConfig.keyFilename, p))
+	if useTLS && httpConfig.certFilename != "" && httpConfig.keyFilename != "" {
+		log.Error("Server stopped: %s", http.ListenAndServeTLS(addr, httpConfig.certFilename, httpConfig.keyFilename, p))
+	} else {
+		log.Error("Server stopped: %s", http.ListenAndServe(addr, p))
+	}
 }
 
 // readConfig applies configuration from environment variables.
